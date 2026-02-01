@@ -1,0 +1,320 @@
+.slot {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+
+	width: 100%;
+	max-width: 100%;
+	padding: var(--size-4-2);
+	border-radius: var(--radius-m);
+
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+
+	&:hover .slot__buttons {
+		opacity: 1;
+		width: fit-content;
+	}
+}
+
+.slot__section {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+}
+
+.slot__list {
+	box-sizing: border-box;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+
+	> *:not(:first-child) {
+		margin-top: 4px;
+	}
+}
+
+.block-language-ktr-slots .slot__list {
+	> *:not(:first-child) {
+		margin-top: 0px;
+		height: 100%;
+		> * {
+			height: 100%;
+		}
+	}
+}
+
+.slot__header {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+
+	display: flex;
+	justify-content: space-between;
+
+	gap: 8px;
+	margin-bottom: -2px;
+	overflow: hidden;
+
+	.slot__label {
+		text-wrap: nowrap;
+		text-overflow: ellipsis;
+		overflow: hidden;
+	}
+}
+
+.slot__data {
+	display: flex;
+	gap: 4px;
+}
+
+.slot__buttons {
+	display: flex;
+	width: 0;
+	opacity: 0;
+	gap: 6px;
+
+	transition: ease 200ms;
+	transition-property: opacity;
+
+	button {
+		all: unset;
+		cursor: pointer;
+		transition: 200ms ease;
+		transition-property: opacity;
+
+		&:hover {
+			color: var(--text-normal);
+		}
+	}
+
+	button:last-child {
+		color: var(--text-error);
+	}
+}
+
+.slot__value {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-medium);
+	color: var(--text-normal);
+	font-variant-numeric: tabular-nums;
+}
+
+.slot__unit {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-medium);
+	color: var(--text-muted);
+}
+
+.slot__unit-avg {
+	opacity: 0.5;
+	padding-left: 2px;
+	font-size: var(--font-smaller);
+}
+
+/** 
+* SLOT ANIMATIONS
+*/
+.slot-fade-enter-active {
+	overflow: hidden;
+	animation: slot-fade-in 500ms forwards;
+	animation-timing-function: var(--spring-easing);
+}
+
+.slot-fade-exit-active {
+	overflow: hidden;
+	animation: slot-fade-out 500ms forwards;
+	animation-timing-function: var(--spring-easing);
+}
+
+.slot-fade-exit-done {
+	opacity: 0;
+	max-height: 0px;
+	padding-top: 0px;
+	padding-bottom: 0px;
+	filter: blur(8px);
+}
+
+/**
+* BUTTONS
+*/
+
+button.KTR-add-slot-button {
+	box-shadow: unset;
+	cursor: pointer;
+
+	opacity: 0;
+	color: var(--text-muted);
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+
+	border-radius: var(--radius-m);
+	margin-bottom: 0;
+	padding: 0;
+	height: 8px;
+	width: 100%;
+
+	transition-property: opacity, height, margin;
+	transition-duration: 400ms;
+	transition-timing-function: var(--spring-easing);
+
+	&:hover {
+		opacity: 1;
+		height: 28px;
+		margin-top: 2px;
+		margin-bottom: 2px;
+
+		&:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+	}
+}
+
+.stat-unit {
+	color: var(--text-faint);
+}
+
+.cm-preview-code-block:has(.block-language-ktr-slots) {
+	border-radius: var(--radius-m) !important;
+}
+
+.slots-codeblock {
+	border-radius: 32px;
+	.slot__list {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+
+		gap: 6px;
+	}
+	.slot {
+		width: 100%;
+		background: var(--background-secondary);
+		margin-top: 0px;
+	}
+	.slot:last-child {
+		max-width: unset;
+	}
+}
+
+.theme-light .progress {
+	background: linear-gradient(to right, var(--light-3), var(--light-4));
+}
+
+.theme-dark .progress {
+	background: linear-gradient(to right, var(--dark-3), var(--dark-4));
+}
+
+.today-progress-bar {
+	--color: color-mix(in oklch, var(--background-secondary), white 5%);
+	height: 5px;
+	background-color: var(--color);
+	box-shadow: 0 0 0 1px var(--color);
+	margin-top: 6px;
+	border-radius: 4px;
+	overflow: hidden;
+
+	.progress {
+		height: 100%;
+		transition: width 300ms ease;
+		border-radius: 2px;
+	}
+}
+
+.KTR-week-progress {
+	--color: color-mix(
+		in oklch,
+		var(--background-secondary),
+		var(--text-normal) 15%
+	);
+	display: flex;
+	gap: 4px;
+	margin-top: 8px;
+
+	.KTR-dot {
+		width: 100%;
+		height: 6px;
+		background-color: var(--color);
+		border-radius: 8px;
+
+		&.completed {
+			background: linear-gradient(
+				to right,
+				var(--light-3),
+				var(--light-4)
+			);
+		}
+	}
+}
+
+@keyframes slot-fade-in {
+	from {
+		opacity: 0;
+		max-height: 0px;
+		padding-top: 0px;
+		padding-bottom: 0px;
+		border-top: 0px;
+		border-bottom: 0px;
+		filter: blur(8px);
+		scale: 0.8;
+	}
+	to {
+		opacity: 1;
+		max-height: 150px;
+	}
+}
+
+@keyframes slot-fade-out {
+	from {
+		max-height: 150px;
+	}
+	to {
+		opacity: 0;
+		max-height: 0px;
+		filter: blur(8px);
+		padding-top: 0px;
+		padding-bottom: 0px;
+		border-top: 0px;
+		border-bottom: 0px;
+		scale: 0.8;
+		margin-top: 0px;
+	}
+}
+
+.slot__data-loading {
+	background: linear-gradient(
+		90deg,
+		#666 0%,
+		#666 40%,
+		#ccc 50%,
+		#666 60%,
+		#666 100%
+	);
+	background-size: 200% 100%;
+	background-clip: text;
+	animation:
+		wave-gradient 2s ease-in-out infinite,
+		fade-in 500ms ease forwards;
+
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+@keyframes wave-gradient {
+	0% {
+		background-position: -200% 0;
+	}
+	100% {
+		background-position: 200% 0;
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}

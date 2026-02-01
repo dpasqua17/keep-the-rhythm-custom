@@ -1,0 +1,61 @@
+@use "./base" as *;
+@use "./heatmap" as *;
+@use "./tooltip" as *;
+@use "./slot" as *;
+@use "./entries" as *;
+@use "./settings" as *;
+
+.sidebar-view {
+	container-type: inline-size;
+	container-name: wrapper;
+}
+
+// @container wrapper (width < 300px) {
+// 	.slot__section {
+// 		flex-direction: column;
+// 		gap: 8px;
+// 	}
+// }
+
+// TODO: add toggable headers that identify each section!
+// .stats-overview h3 {
+// 	font-size: var(--font-ui-medium);
+// 	font-weight: var(--font-semibold);
+// 	margin-bottom: var(--size-4-2);
+// 	color: var(--text-normal);
+// }
+
+.heatmap-codeblock {
+	width: fit-content;
+	max-width: 100%;
+
+	& > * {
+		width: fit-content;
+	}
+}
+
+// MODAL
+
+.KTR__modal-buttons {
+	display: flex;
+	gap: 8px;
+}
+
+.KTR__modal p {
+	margin-top: 12px;
+	margin-bottom: 12px;
+}
+
+.KTR__modal .modal .modal-header {
+	margin: 0;
+}
+
+.KTR__file-to-delete {
+	font-weight: var(--bold-weight);
+	color: var(--text-error);
+	padding: 4px 8px;
+	margin: 0;
+	background: var(--background-primary-alt);
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+}
