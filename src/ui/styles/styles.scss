@@ -5,6 +5,7 @@
 @use "./entries" as *;
 @use "./settings" as *;
 @use "./streakCalendar" as *;
+@use "./sprintTimer" as *;
 
 .sidebar-view {
 	container-type: inline-size;

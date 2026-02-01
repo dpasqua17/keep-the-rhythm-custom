@@ -86,6 +86,12 @@ export interface Settings {
 		};
 		slots: SlotConfig[];
 	};
+
+	sprintConfig: {
+		workDuration: number;
+		breakDuration: number;
+		enabled: boolean;
+	};
 }
 
 export interface SlotConfig {
@@ -204,5 +210,11 @@ export const DEFAULT_SETTINGS: Settings = {
 		enabled: true,
 		folderPath: ".keep-the-rhythm",
 		maxNumberOfBackups: 3,
+	},
+
+	sprintConfig: {
+		workDuration: 25,
+		breakDuration: 5,
+		enabled: true,
 	},
 };

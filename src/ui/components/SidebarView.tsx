@@ -7,6 +7,7 @@ import { SlotWrapper } from "./SlotWrapper";
 import { EVENTS, state } from "@/core/pluginState";
 import { Entries } from "./Entries";
 import { StreakCalendar } from "./StreakCalendar";
+import { SprintTimer } from "./SprintTimer";
 
 interface KTRView {
 	data?: PluginData;
@@ -33,6 +34,9 @@ export const KTRView = ({ plugin }: KTRView) => {
 	const [showSlots, setShowSlots] = useState(
 		plugin.data.settings.sidebarConfig.visibility.showSlots,
 	);
+	const [sprintConfig, setSprintConfig] = useState(
+		plugin.data.settings.sprintConfig,
+	);
 
 	const updateData = () => {
 		setHeatmapConfigState(plugin.data.settings.heatmapConfig);
@@ -46,6 +50,7 @@ export const KTRView = ({ plugin }: KTRView) => {
 			plugin.data.settings.sidebarConfig.visibility.showEntries,
 		);
 		setShowSlots(plugin.data.settings.sidebarConfig.visibility.showSlots);
+		setSprintConfig(plugin.data.settings.sprintConfig);
 	};
 
 	useEffect(() => {
@@ -72,6 +77,12 @@ export const KTRView = ({ plugin }: KTRView) => {
 				<StreakCalendar
 					dailyGoal={plugin.data.settings.dailyWritingGoal || 500}
 				/>
+				{sprintConfig.enabled && (
+					<SprintTimer
+						workDuration={sprintConfig.workDuration}
+						breakDuration={sprintConfig.breakDuration}
+					/>
+				)}
 				{showEntries && <Entries />}
 			</KeyProvider>
 		</div>

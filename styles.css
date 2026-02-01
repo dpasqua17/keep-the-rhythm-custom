@@ -722,6 +722,118 @@ button.todayEntries__entry-unit {
   border-radius: 2px;
   display: inline-block;
 }
+.sprint-timer {
+  padding: 12px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  margin: 8px 0;
+}
+.sprint-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.sprint-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-normal);
+}
+.sprint-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+.sprint-status-idle {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.sprint-status-working {
+  background: var(--color-green);
+  color: white;
+}
+.sprint-status-break {
+  background: var(--color-blue);
+  color: white;
+}
+.sprint-status-paused {
+  background: var(--color-orange);
+  color: white;
+}
+.sprint-time-display {
+  text-align: center;
+  margin: 16px 0;
+}
+.sprint-time {
+  font-size: 36px;
+  font-weight: 700;
+  font-family: var(--font-monospace);
+  color: var(--text-normal);
+  letter-spacing: 2px;
+}
+.sprint-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sprint-words {
+  font-weight: 500;
+}
+.sprint-video {
+  font-style: italic;
+}
+.sprint-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sprint-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sprint-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.sprint-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sprint-btn-primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.sprint-btn-secondary {
+  background: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+.sprint-btn-tertiary {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.sprint-info {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.sprint-config {
+  font-style: italic;
+}
 .sidebar-view {
   container-type: inline-size;
   container-name: wrapper;
