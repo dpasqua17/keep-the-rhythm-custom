@@ -4,6 +4,7 @@
 @use "./slot" as *;
 @use "./entries" as *;
 @use "./settings" as *;
+@use "./streakCalendar" as *;
 
 .sidebar-view {
 	container-type: inline-size;
