@@ -1,10 +1,10 @@
 {
-	"id": "keep-the-rhythm",
-	"name": "Keep the Rhythm",
+	"id": "keep-the-rhythm-custom",
+	"name": "Keep the Rhythm (Custom)",
 	"version": "0.2.8",
 	"minAppVersion": "1.0.0",
-	"description": "Visualize and track your writing habit!",
-	"author": "Ezben",
-	"authorUrl": "https://www.benjaminezequiel.com/",
+	"description": "Fork with #writing tag filtering. Visualize and track your writing habit!",
+	"author": "Ezben (forked by dpasqua17)",
+	"authorUrl": "https://github.com/dpasqua17/keep-the-rhythm-custom",
 	"isDesktopOnly": false
 }
