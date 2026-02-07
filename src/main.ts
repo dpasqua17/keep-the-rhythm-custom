@@ -9,8 +9,10 @@ import {
 import {
 	ColorConfig,
 	DEFAULT_SETTINGS,
+	FileTrackingSnapshot,
 	STARTING_STATS,
 	PluginData,
+	Unit,
 } from "@/defs/types";
 
 import { getDB, initDatabase } from "@/db/db";
@@ -19,15 +21,41 @@ import { PluginView, VIEW_TYPE } from "@/ui/views/PluginView";
 import { migrateDataFromOldFormat } from "@/utils/migrateData";
 import { SettingsTab } from "@/ui/settings/SettingsTab";
 
-import { formatDate, scheduleNextDayTrigger } from "@/utils/dateUtils";
+import {
+	floorMomentToFive,
+	formatDate,
+	scheduleNextDayTrigger,
+} from "@/utils/dateUtils";
 
 import * as utils from "@/utils/utils";
 import * as events from "@/core/events";
 import * as codeBlocks from "@/core/codeBlocks";
 import { checkPreviousStreak, activateSidebarView } from "@/core/commands";
 import { SprintManager } from "@/core/SprintManager";
+import { DailyActivity } from "@/db/types";
+import { getLanguageBasedWordCount } from "@/core/wordCounting";
+import { contentHasTag, fileHasTagFromCache } from "@/core/tagFilter";
+import {
+	areCountsAlreadyTracked,
+	chooseBackfillBaseline,
+	clampBackfillIntervalMinutes,
+	computeCompletedDatesFromDeltas,
+	DailyWordDelta,
+	LatestTrackedCounts,
+	resolveBackfillDate,
+} from "@/core/backfillLogic";
 
 const moment = _moment as unknown as typeof _moment.default;
+
+interface BackfillSummary {
+	taggedFiles: number;
+	changedFiles: number;
+	updatedActivities: number;
+	deletedFilesReconciled: number;
+	fastSkippedFiles: number;
+	totalWordDelta: number;
+	totalCharDelta: number;
+}
 
 export default class KeepTheRhythm extends Plugin {
 	data: PluginData = {
@@ -39,7 +67,12 @@ export default class KeepTheRhythm extends Plugin {
 	};
 
 	private dayTimer: number | null = null;
+	private periodicBackfillTimer: number | null = null;
+	private isBackfillInProgress: boolean = false;
 	private JSON_DEBOUNCE_TIME = 1000;
+	private DEFAULT_BACKFILL_INTERVAL_MINUTES = 60;
+	private MIN_BACKFILL_INTERVAL_MINUTES = 5;
+	private MAX_BACKFILL_INTERVAL_MINUTES = 24 * 60;
 	private LAST_BREAKING_CHANGE_TO_SCHEMA = "0.2";
 
 	private JsonDebounceTimeout: any = null;
@@ -89,15 +122,9 @@ export default class KeepTheRhythm extends Plugin {
 			this.data.settings = loadedData.settings;
 		}
 
-		await this.saveData(this.data);
-
-		// #endregion
-
 		state.setToday();
 
-		this.checkVaultCountStaleness();
-
-		// /** Set of utility functions that registers required objects and sets plugin state */
+		await this.runBackfillAndRefreshMetrics("startup");
 
 		/** Initialize SIDEBAR view */
 		this.registerView(VIEW_TYPE, (leaf) => {
@@ -134,6 +161,402 @@ export default class KeepTheRhythm extends Plugin {
 				await this.saveDataToJSON();
 			}, this.JSON_DEBOUNCE_TIME);
 		});
+
+		this.startPeriodicBackfill();
+	}
+
+	private startPeriodicBackfill() {
+		if (this.periodicBackfillTimer !== null) {
+			window.clearInterval(this.periodicBackfillTimer);
+		}
+
+		if (!this.data.settings.enablePeriodicBackfill) {
+			this.periodicBackfillTimer = null;
+			return;
+		}
+
+		const intervalMs = this.getBackfillIntervalMs();
+		this.periodicBackfillTimer = window.setInterval(() => {
+			void this.runBackfillAndRefreshMetrics("hourly");
+		}, intervalMs);
+	}
+
+	private getBackfillIntervalMinutes(): number {
+		return clampBackfillIntervalMinutes(
+			this.data.settings?.backfillIntervalMinutes,
+			this.DEFAULT_BACKFILL_INTERVAL_MINUTES,
+			this.MIN_BACKFILL_INTERVAL_MINUTES,
+			this.MAX_BACKFILL_INTERVAL_MINUTES,
+		);
+	}
+
+	private getBackfillIntervalMs(): number {
+		return this.getBackfillIntervalMinutes() * 60 * 1000;
+	}
+
+	private async runBackfillAndRefreshMetrics(
+		source: "startup" | "hourly",
+	): Promise<void> {
+		if (this.isBackfillInProgress) return;
+
+		this.isBackfillInProgress = true;
+		const startedAt = Date.now();
+
+		try {
+			events.cleanDBTimeout();
+
+			const today = formatDate(new Date());
+			if (today !== state.today) {
+				state.setToday();
+			}
+
+			const summary = await this.backfillWritingFileChangesFromMtime();
+			const streakChanged = await this.recomputeGoalCompletionDays();
+			await this.checkVaultCountStaleness();
+			const durationMs = Date.now() - startedAt;
+
+			if (this.data.stats) {
+				this.data.stats.backfillStatus = {
+					lastRunAt: new Date().toISOString(),
+					source,
+					tagFilter: this.data.settings.writingTagFilter || "",
+					intervalMinutes: this.getBackfillIntervalMinutes(),
+					taggedFiles: summary.taggedFiles,
+					changedFiles: summary.changedFiles,
+					updatedActivities: summary.updatedActivities,
+					deletedFilesReconciled: summary.deletedFilesReconciled,
+					fastSkippedFiles: summary.fastSkippedFiles,
+					totalWordDelta: summary.totalWordDelta,
+					totalCharDelta: summary.totalCharDelta,
+					durationMs,
+				};
+			}
+
+			await this.saveDataToJSON();
+
+			if (summary.updatedActivities > 0 || streakChanged) {
+				state.emit(EVENTS.REFRESH_EVERYTHING);
+			}
+
+			console.info(
+				`KTR: ${source} backfill complete | tagged=${summary.taggedFiles} changed=${summary.changedFiles} entries=${summary.updatedActivities} deleted=${summary.deletedFilesReconciled} skipped=${summary.fastSkippedFiles} wordDelta=${summary.totalWordDelta} charDelta=${summary.totalCharDelta}`,
+			);
+		} catch (error) {
+			console.error(`KTR: Error running ${source} backfill`, error);
+		} finally {
+			this.isBackfillInProgress = false;
+		}
+	}
+
+	private isNewerActivity(
+		newActivity: DailyActivity,
+		currentActivity: DailyActivity,
+	): boolean {
+		if (newActivity.date !== currentActivity.date) {
+			return newActivity.date > currentActivity.date;
+		}
+
+		return (newActivity.id || 0) > (currentActivity.id || 0);
+	}
+
+	private resolveBackfillDate(mtimeDate: string, baselineDate: string): string {
+		return resolveBackfillDate(mtimeDate, baselineDate);
+	}
+
+	private async applyBackfilledDelta(
+		filePath: string,
+		date: string,
+		timeKey: string,
+		wordCountStart: number,
+		charCountStart: number,
+		wordDelta: number,
+		charDelta: number,
+	): Promise<void> {
+		const existingActivity = await getDB()
+			.dailyActivity.where("[date+filePath]")
+			.equals([date, filePath])
+			.first();
+
+		if (!existingActivity) {
+			await getDB().dailyActivity.add({
+				date,
+				filePath,
+				wordCountStart,
+				charCountStart,
+				changes: [
+					{
+						timeKey,
+						w: wordDelta,
+						c: charDelta,
+					},
+				],
+			});
+			return;
+		}
+
+		const existingChange = existingActivity.changes.find(
+			(change) => change.timeKey === timeKey,
+		);
+
+		if (existingChange) {
+			existingChange.w += wordDelta;
+			existingChange.c += charDelta;
+		} else {
+			existingActivity.changes.push({
+				timeKey,
+				w: wordDelta,
+				c: charDelta,
+			});
+		}
+
+		existingActivity.changes.sort((a, b) => a.timeKey.localeCompare(b.timeKey));
+		await getDB().dailyActivity.put(existingActivity);
+	}
+
+	private async backfillWritingFileChangesFromMtime(): Promise<BackfillSummary> {
+		if (!this.data.stats) {
+			return {
+				taggedFiles: 0,
+				changedFiles: 0,
+				updatedActivities: 0,
+				deletedFilesReconciled: 0,
+				fastSkippedFiles: 0,
+				totalWordDelta: 0,
+				totalCharDelta: 0,
+			};
+		}
+
+		const allActivities = await getDB().dailyActivity.toArray();
+		const latestActivityRecords = new Map<string, DailyActivity>();
+
+		for (const activity of allActivities) {
+			const existing = latestActivityRecords.get(activity.filePath);
+			if (!existing || this.isNewerActivity(activity, existing)) {
+				latestActivityRecords.set(activity.filePath, activity);
+			}
+		}
+
+		const latestActivityByPath = new Map<string, LatestTrackedCounts>();
+		for (const [filePath, activity] of latestActivityRecords.entries()) {
+			const totals = utils.sumBothTimeEntries(activity);
+			latestActivityByPath.set(filePath, {
+				date: activity.date,
+				totalWords: totals.totalWords,
+				totalChars: totals.totalChars,
+			});
+		}
+
+		if (!this.data.stats.fileSnapshots) {
+			this.data.stats.fileSnapshots = {};
+		}
+
+		const fileSnapshots = this.data.stats.fileSnapshots as Record<
+			string,
+			FileTrackingSnapshot
+		>;
+
+		let taggedFiles = 0;
+		let changedFiles = 0;
+		let updatedActivities = 0;
+		let deletedFilesReconciled = 0;
+		let fastSkippedFiles = 0;
+		let totalWordDelta = 0;
+		let totalCharDelta = 0;
+		const taggedPaths = new Set<string>();
+		const existingPaths = new Set<string>();
+		const files = this.app.vault.getMarkdownFiles();
+		const now = Date.now();
+		const nowDate = formatDate(new Date(now));
+		const nowTimeKey = floorMomentToFive(moment(now)).format("HH:mm");
+		const currentTagFilter = this.data.settings.writingTagFilter || "";
+		const previousTagFilter = this.data.stats.backfillStatus?.tagFilter;
+		const tagFilterChanged =
+			typeof previousTagFilter === "string" &&
+			previousTagFilter !== currentTagFilter;
+
+		for (const file of files) {
+			existingPaths.add(file.path);
+			const snapshot = fileSnapshots[file.path];
+			const safeMtime = Math.min(file.stat.mtime || now, now);
+			const mtimeDate = formatDate(new Date(safeMtime));
+			const timeKey = floorMomentToFive(moment(safeMtime)).format("HH:mm");
+			const latestActivity = latestActivityByPath.get(file.path) || null;
+
+			const canSkipReadWithSnapshot =
+				!!snapshot && !tagFilterChanged && safeMtime <= snapshot.lastModified;
+			if (canSkipReadWithSnapshot) {
+				taggedPaths.add(file.path);
+				taggedFiles++;
+				fastSkippedFiles++;
+				continue;
+			}
+
+			const cachedTagResult = fileHasTagFromCache(
+				file,
+				currentTagFilter,
+				this.app.metadataCache,
+			);
+			if (cachedTagResult === false) continue;
+
+			const content = await this.app.vault.read(file);
+			const hasTag = contentHasTag(content, currentTagFilter);
+			if (!hasTag) continue;
+
+			taggedFiles++;
+			taggedPaths.add(file.path);
+
+			const currentWordCount = getLanguageBasedWordCount(
+				content,
+				this.data.settings.enabledLanguages,
+			);
+			const currentCharCount = content.length;
+
+			if (
+				areCountsAlreadyTracked(
+					currentWordCount,
+					currentCharCount,
+					latestActivity,
+					snapshot,
+				)
+			) {
+				fileSnapshots[file.path] = {
+					wordCount: currentWordCount,
+					charCount: currentCharCount,
+					lastModified: safeMtime,
+				};
+				continue;
+			}
+
+			const baseline = chooseBackfillBaseline(
+				latestActivity,
+				snapshot,
+				safeMtime,
+			);
+			if (baseline) {
+				const baselineWordCount = baseline.wordCount;
+				const baselineCharCount = baseline.charCount;
+				const baselineDate = baseline.date;
+				const wordDelta = currentWordCount - baselineWordCount;
+				const charDelta = currentCharCount - baselineCharCount;
+
+				if (wordDelta !== 0 || charDelta !== 0) {
+					const backfillDate = this.resolveBackfillDate(
+						mtimeDate,
+						baselineDate,
+					);
+
+					await this.applyBackfilledDelta(
+						file.path,
+						backfillDate,
+						timeKey,
+						baselineWordCount,
+						baselineCharCount,
+						wordDelta,
+						charDelta,
+					);
+
+					changedFiles++;
+					updatedActivities++;
+					totalWordDelta += wordDelta;
+					totalCharDelta += charDelta;
+				}
+			}
+
+			fileSnapshots[file.path] = {
+				wordCount: currentWordCount,
+				charCount: currentCharCount,
+				lastModified: safeMtime,
+			};
+		}
+
+		for (const path of Object.keys(fileSnapshots)) {
+			const snapshot = fileSnapshots[path];
+
+			if (!existingPaths.has(path)) {
+				const latestActivity = latestActivityByPath.get(path) || null;
+				const baselineWordCount =
+					latestActivity?.totalWords ?? snapshot.wordCount;
+				const baselineCharCount =
+					latestActivity?.totalChars ?? snapshot.charCount;
+
+				if (baselineWordCount !== 0 || baselineCharCount !== 0) {
+					await this.applyBackfilledDelta(
+						path,
+						nowDate,
+						nowTimeKey,
+						baselineWordCount,
+						baselineCharCount,
+						-baselineWordCount,
+						-baselineCharCount,
+					);
+					changedFiles++;
+					updatedActivities++;
+					deletedFilesReconciled++;
+					totalWordDelta -= baselineWordCount;
+					totalCharDelta -= baselineCharCount;
+				}
+
+				delete fileSnapshots[path];
+				continue;
+			}
+
+			if (!taggedPaths.has(path)) {
+				delete fileSnapshots[path];
+			}
+		}
+
+		if (this.data.stats.wholeVaultWordCount !== undefined) {
+			this.data.stats.wholeVaultWordCount += totalWordDelta;
+		}
+		if (this.data.stats.wholeVaultCharCount !== undefined) {
+			this.data.stats.wholeVaultCharCount += totalCharDelta;
+		}
+
+		return {
+			taggedFiles,
+			changedFiles,
+			updatedActivities,
+			deletedFilesReconciled,
+			fastSkippedFiles,
+			totalWordDelta,
+			totalCharDelta,
+		};
+	}
+
+	private async recomputeGoalCompletionDays(): Promise<boolean> {
+		if (!this.data.stats) return false;
+
+		const previousCompletedDates = [
+			...(this.data.stats.daysWithCompletedGoal || []),
+		].sort();
+		const previousCurrentStreak = this.data.stats.currentStreak || 0;
+		const previousHighestStreak = this.data.stats.highestStreak || 0;
+
+		const activities = await getDB().dailyActivity.toArray();
+		const wordDeltas: DailyWordDelta[] = activities.map((activity) => ({
+			date: activity.date,
+			wordDelta: utils.sumTimeEntries(activity, Unit.WORD, true),
+		}));
+
+		const dailyGoal =
+			this.data.settings.dailyWritingGoal || DEFAULT_SETTINGS.dailyWritingGoal;
+		const completedDates = computeCompletedDatesFromDeltas(wordDeltas, dailyGoal);
+
+		this.data.stats.daysWithCompletedGoal = completedDates;
+
+		const { currentStreak, longestStreak } =
+			utils.getDateStreaks(completedDates);
+		this.data.stats.currentStreak = currentStreak;
+		this.data.stats.highestStreak = longestStreak;
+
+		const datesChanged =
+			previousCompletedDates.length !== completedDates.length ||
+			previousCompletedDates.some((date, index) => date !== completedDates[index]);
+		const streakChanged =
+			previousCurrentStreak !== currentStreak ||
+			previousHighestStreak !== longestStreak;
+
+		return datesChanged || streakChanged;
 	}
 
 	private async checkVaultCountStaleness() {
@@ -159,6 +582,7 @@ export default class KeepTheRhythm extends Plugin {
 			}
 		}
 	}
+
 	private async backupDataToVaultFolder(data: any) {
 		const backupConfig =
 			data.settings.backupConfig || this.data.settings.backupConfig;
@@ -289,7 +713,6 @@ export default class KeepTheRhythm extends Plugin {
 		}
 		if (loadedData.stats) {
 			this.data.stats = loadedData.stats;
-			await checkPreviousStreak();
 
 			const dailyActivitiesFromJSON =
 				this.data.stats?.dailyActivity || [];
@@ -389,6 +812,9 @@ export default class KeepTheRhythm extends Plugin {
 		if (this.dayTimer !== null) {
 			window.clearTimeout(this.dayTimer);
 		}
+		if (this.periodicBackfillTimer !== null) {
+			window.clearInterval(this.periodicBackfillTimer);
+		}
 
 		if (this.JsonDebounceTimeout) {
 			clearTimeout(this.JsonDebounceTimeout);
@@ -412,7 +838,7 @@ export default class KeepTheRhythm extends Plugin {
 				return;
 			}
 
-			newData.stats?.dailyActivity.forEach(async (activity, index) => {
+			for (const activity of newData.stats?.dailyActivity || []) {
 				let existingActivity;
 
 				if (activity.id) {
@@ -426,11 +852,11 @@ export default class KeepTheRhythm extends Plugin {
 					existingActivity &&
 					JSON.stringify(existingActivity) == JSON.stringify(activity)
 				) {
-					return;
+					continue;
 				} else {
-					getDB().dailyActivity.put(activity);
+					await getDB().dailyActivity.put(activity);
 				}
-			});
+			}
 
 			/** Assign new external settings*/
 			if (this.data.settings !== newData.settings) {
@@ -438,6 +864,7 @@ export default class KeepTheRhythm extends Plugin {
 					...DEFAULT_SETTINGS,
 					...newData.settings,
 				};
+				this.startPeriodicBackfill();
 			}
 
 			state.emit(EVENTS.REFRESH_EVERYTHING);
@@ -491,6 +918,7 @@ export default class KeepTheRhythm extends Plugin {
 
 	public async updateAndSaveEverything() {
 		await this.saveData(this.data);
+		this.startPeriodicBackfill();
 		state.setToday(); // already refreshes everything
 	}
 

@@ -7,63 +7,15 @@ import { getDB } from "../db/db";
 import { DailyActivity, TimeEntry } from "@/db/types";
 import KeepTheRhythm from "../main";
 import { getLanguageBasedWordCount } from "@/core/wordCounting";
-import { formatDate } from "@/utils/dateUtils";
 import { floorMomentToFive } from "@/utils/dateUtils";
 import { moment as _moment } from "obsidian";
 import { sumBothTimeEntries } from "@/utils/utils";
+import { fileHasTag } from "@/core/tagFilter";
 
 const moment = _moment as unknown as typeof _moment.default;
 
 let dbUpdateTimeout: NodeJS.Timeout | null = null;
 const DEBOUNCE_TIME = 100; // ms
-
-/**
- * @function fileHasTag
- * Checks if a file contains the specified tag in frontmatter or inline
- */
-async function fileHasTag(file: TFile, tagFilter: string): Promise<boolean> {
-	if (!tagFilter || tagFilter.trim() === "") {
-		return true; // No filter set, track all files
-	}
-
-	const tag = tagFilter.startsWith("#") ? tagFilter : `#${tagFilter}`;
-	const tagWithoutHash = tagFilter.startsWith("#")
-		? tagFilter.slice(1)
-		: tagFilter;
-
-	try {
-		const content = await state.plugin.app.vault.read(file);
-
-		// Check for inline tags
-		if (content.includes(tag)) {
-			return true;
-		}
-
-		// Check YAML frontmatter for tags
-		const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-		if (frontmatterMatch) {
-			const frontmatter = frontmatterMatch[1];
-			// Match tags: [writing] or tags: writing or tags:
-			//   - writing
-			const tagRegex = new RegExp(
-				`^tags:\\s*(?:\\[([^\\]]*)\\]|([^\\n]*))`,
-				"m",
-			);
-			const match = frontmatter.match(tagRegex);
-			if (match) {
-				const tagList = match[1] || match[2] || "";
-				if (tagList.includes(tagWithoutHash)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
-	} catch (error) {
-		console.error(`KTR: Error checking tags for ${file.path}:`, error);
-		return false;
-	}
-}
 
 /**
  * @function handleEditorChange
@@ -83,7 +35,12 @@ export async function handleEditorChange(
 
 	// Check if file has the required tag
 	const tagFilter = plugin.data.settings.writingTagFilter;
-	const hasTag = await fileHasTag(file, tagFilter);
+	const hasTag = await fileHasTag(
+		file,
+		tagFilter,
+		plugin.app.vault,
+		plugin.app.metadataCache,
+	);
 	if (!hasTag) {
 		return;
 	}
@@ -192,7 +149,12 @@ export async function handleFileOpen(file: TFile) {
 
 	// Check if file has the required tag
 	const tagFilter = state.plugin.data.settings.writingTagFilter;
-	const hasTag = await fileHasTag(file, tagFilter);
+	const hasTag = await fileHasTag(
+		file,
+		tagFilter,
+		state.plugin.app.vault,
+		state.plugin.app.metadataCache,
+	);
 	if (!hasTag) {
 		return;
 	}
@@ -321,6 +283,12 @@ export async function handleFileDelete(file: TFile) {
 	if (!file || file.extension !== "md") {
 		return;
 	}
+
+	const fileSnapshots = state.plugin.data.stats?.fileSnapshots;
+	if (fileSnapshots && file.path in fileSnapshots) {
+		delete fileSnapshots[file.path];
+	}
+
 	//FUTURE: correct file delta is only calculated if the user opens the file first
 	// if he doesnt there is no daily activity to get the current file count and it will not consider that into the calculations
 	try {
@@ -409,6 +377,12 @@ export async function handleFileRename(file: TFile, oldPath: string) {
 			.modify((dailyEntry) => {
 				dailyEntry.filePath = file.path;
 			});
+
+		const fileSnapshots = state.plugin.data.stats?.fileSnapshots;
+		if (fileSnapshots && oldPath in fileSnapshots) {
+			fileSnapshots[file.path] = fileSnapshots[oldPath];
+			delete fileSnapshots[oldPath];
+		}
 
 		state.emit(EVENTS.REFRESH_EVERYTHING);
 	} catch (error) {

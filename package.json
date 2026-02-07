@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node esbuild.config.js --watch",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.js production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.js production",
+    "test": "jest --runInBand"
   },
   "keywords": [],
   "author": "",

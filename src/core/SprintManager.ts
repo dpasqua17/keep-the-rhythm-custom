@@ -170,11 +170,11 @@ export class SprintManager {
 
 	private async spawnBrowser(): Promise<void> {
 		const videoId = SPRINT_VIDEOS[this.currentVideoIndex];
-		const url = `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}`;
+		const url = `https://www.youtube.com/watch?v=${videoId}&autoplay=1&loop=1&playlist=${videoId}`;
 
 		try {
 			this.browserProcess = exec(
-				`chromium --new-window --app="${url}"`,
+				`chromium --new-window --disable-features=DesktopPWAsLinkCapturing --autoplay-policy=no-user-gesture-required "${url}"`,
 				(error) => {
 					if (error && !error.message.includes("SIGTERM")) {
 						console.error("Failed to spawn Chromium:", error);
@@ -193,7 +193,7 @@ export class SprintManager {
 		}
 
 		try {
-			await execAsync("pkill -f 'chromium.*youtube.com/embed'");
+			await execAsync("pkill -f 'chromium.*youtube\\.com/(watch|embed)'");
 		} catch (error) {
 			// Process might not exist, that's fine
 		}
@@ -267,7 +267,7 @@ export class SprintManager {
 
 	static async killAllBrowsers(): Promise<void> {
 		try {
-			await execAsync("pkill -f 'chromium.*youtube.com/embed'");
+			await execAsync("pkill -f 'chromium.*youtube\\.com/(watch|embed)'");
 		} catch (error) {
 			// Process might not exist, that's fine
 		}

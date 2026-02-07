@@ -24,10 +24,23 @@ Pomodoro-style focused writing sessions with LoFi music:
 - **Customizable durations**: Default 25 min work / 5 min break
 - **5 LoFi videos**: Curated playlist for focus
 - **Live word tracking**: See words written during each sprint
-- **Omarchy integration**: Auto-opens Chromium on workspace 5
+- **Omarchy integration**: Auto-opens Chromium on workspace 5 using direct YouTube watch URLs (bypasses webapp capture)
+- **Autoplay launch**: Starts Chromium with autoplay policy enabled to begin playback without extra clicks
 - **Audio fade**: Smooth 2-second fade in/out when starting/pausing
 
-### 4. **Fork Identification**
+### 4. **Automatic Offline Recovery Backfill** 🔄
+
+Recovers missed changes to `#writing` files made while the plugin was inactive:
+
+- Runs automatically on startup and periodically while Obsidian is open (default: 60 minutes)
+- Uses file `mtime` to assign recovered deltas by day
+- Recomputes completed-goal days/streaks after recovery
+- Avoids duplicate counting on repeated runs
+- Reconciles deleted tracked files from offline periods
+- Shows run status in the sidebar
+- No manual recovery command is required
+
+### 5. **Fork Identification**
 
 Modified `manifest.json` to distinguish from original:
 
@@ -100,11 +113,11 @@ Already configured in `~/.config/hypr/hyprland.conf`:
 windowrulev2 = workspace 5 silent, class:^(chromium)$
 ```
 
-This automatically moves the Chromium window to workspace 5 when the sprint timer opens YouTube.
+This automatically moves the Chromium window to workspace 5 when the sprint timer opens YouTube in Chromium.
 
 ### Using the Sprint Timer
 
-1. **Start**: Click "Start" → Chromium opens on workspace 5 with LoFi music
+1. **Start**: Click "Start" → Chromium opens on workspace 5 with a direct `youtube.com/watch` URL and LoFi music (autoplays)
 2. **Pause**: Click "Pause" → Audio fades out (browser stays open)
 3. **Resume**: Click "Resume" → Audio fades back in
 4. **Stop**: Click "Stop" → Ends sprint, closes browser
@@ -120,16 +133,23 @@ All custom features are configurable in Obsidian plugin settings:
 
 - **Writing Tag Filter**: Change from "#writing" to any tag
 - **Daily Writing Goal**: Set your target word count
+- **Enable Periodic Backfill**: Toggle hourly/interval recovery checks
+- **Backfill Interval (minutes)**: Configure periodic recovery cadence (minimum 5, default 60)
 - **Sprint Durations**: Customize work/break times
 - **Feature Toggles**: Enable/disable streak calendar and sprint timer
 
 ### Files Changed
 
 - `src/core/events.ts` - Tag filtering logic
+- `src/core/tagFilter.ts` - Shared metadata/content tag detection
+- `src/core/backfillLogic.ts` - Backfill helper logic (baseline, clamping, idempotency)
 - `src/ui/components/StreakCalendar.tsx` - Streak calendar component
 - `src/ui/components/SprintTimer.tsx` - Sprint timer UI
+- `src/ui/components/SidebarView.tsx` - Backfill status display
 - `src/core/SprintManager.ts` - Sprint logic and browser management
-- `src/defs/types.ts` - Added sprint configuration types
+- `src/main.ts` - Startup/periodic backfill orchestration
+- `src/defs/types.ts` - Added backfill settings/status and tracking types
+- `src/ui/settings/SettingSchema.ts` - Backfill settings fields
 - `manifest.json` - Fork identification
 
 ## ⚠️ Important Notes
@@ -172,11 +192,19 @@ All custom features are configurable in Obsidian plugin settings:
 2. Check the tag filter setting matches your tag exactly
 3. Reload Obsidian after changing tag filter
 
+**If backfill results seem stale:**
+
+1. Check "Enable Periodic Backfill" is enabled in plugin settings
+2. Verify your "Backfill Interval (minutes)" is reasonable
+3. Open the sidebar and check the "Backfill" status card timestamps/counts
+4. Reload Obsidian once to force a startup backfill pass
+
 ## 📊 Feature Comparison
 
 | Feature                | Original     | This Fork            |
 | ---------------------- | ------------ | -------------------- |
 | Word count tracking    | ✅ All files | ✅ Filtered by tag   |
+| Offline recovery       | ❌           | ✅ Startup + periodic |
 | Heatmap                | ✅           | ✅                   |
 | Streak tracking        | ✅ Basic     | ✅ Enhanced calendar |
 | Sprint timer           | ❌           | ✅                   |
@@ -185,5 +213,5 @@ All custom features are configurable in Obsidian plugin settings:
 
 ---
 
-**Last Updated**: February 2025  
-**Custom Features**: Tag filtering, Streak Calendar, Sprint Timer with Omarchy
+**Last Updated**: February 2026  
+**Custom Features**: Tag filtering, offline recovery backfill, streak calendar, sprint timer with Omarchy

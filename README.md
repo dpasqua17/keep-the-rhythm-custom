@@ -11,6 +11,17 @@
 
 Only track word counts for files with a specific tag (default: `#writing`). Perfect for separating creative writing from notes and journals.
 
+### 🔄 Automatic Offline Recovery Backfill
+
+Recovers missed writing changes made while the plugin was inactive (offline/another device) by scanning `#writing` files:
+
+- Runs automatically at startup and every 60 minutes by default (configurable)
+- Uses file `mtime` to attribute recovered deltas to the right day
+- Recomputes goal-completion dates/streaks from DB deltas
+- Reconciles tracked files deleted while plugin was inactive
+- Uses idempotent reconciliation to avoid duplicate deltas/double-counting
+- Shows backfill status in the sidebar
+
 ### 📅 Writing Goal Streak Calendar
 
 Visual 6-week calendar showing goal achievement:
@@ -27,7 +38,8 @@ Pomodoro-style focused writing with integrated LoFi music:
 - Customizable work/break durations (25/5 min default)
 - Real-time word count tracking during sprints
 - 5 curated LoFi videos for focus
-- **Omarchy Integration**: Auto-opens on workspace 5 with audio fade
+- **Omarchy Integration**: Auto-opens Chromium on workspace 5 using direct YouTube watch URLs (bypasses webapp capture)
+- **Autoplay Launch**: Starts Chromium with autoplay policy enabled to begin playback without extra clicks
 - Smooth 2-second audio fade in/out
 
 ---
@@ -52,6 +64,7 @@ Keep the Rhythm is an Obsidian plugin that helps you maintain a consistent writi
 - **Advanced Filtering**: Filter your writing statistics with the query syntax for specific folders or file patterns
 
 - **Multi-device Sync**: Syncs and merges statistics across different devices
+- **Offline Recovery**: Backfills missed `#writing` edits using file metadata and periodic checks
 
 ## Installation
 
@@ -88,6 +101,23 @@ Set and track your daily writing goals:
 3. View your current streak in the sidebar or through embedded slots
 
 > You can force the plugin to check previous dates when you change your writing goal by using the command `Check streak`
+
+### Offline/Other-Device Recovery
+
+Keep the Rhythm (Custom) automatically runs a recovery pass for `#writing` files:
+
+1. On plugin startup
+2. Periodically while the plugin is active (default: every 60 minutes, configurable)
+
+Recovery behavior:
+
+- Detects missed changes by comparing current file counts with tracked baselines
+- Attributes deltas using file `mtime` (clamped so dates never go before known baseline dates)
+- Avoids duplicate counting across repeated runs
+- Reconciles deleted files that were previously tracked
+- Updates streak metrics from DB totals after each run
+
+No manual refresh command is required for offline recovery.
 
 ### Heatmap Customization
 
@@ -193,6 +223,8 @@ Shows the activity for the specified date (`YYYY-MM-DD` format). If no date is p
 Access comprehensive customization options through the plugin settings:
 
 - Set daily writing goals and track streaks
+- Toggle periodic recovery backfill
+- Configure periodic backfill interval (minutes, minimum: 5, default: 60)
 - Configure heatmap appearance (coloring, cell shapes, labels)
 - Toggle visibility of different plugin components
 
@@ -231,6 +263,11 @@ windowrulev2 = workspace 5 silent, class:^(chromium)$
 - Or set `tags: [writing]` in frontmatter
 - Configure the tag in plugin settings
 
+**Backfill Status:**
+
+- Sidebar includes a "Backfill" status card
+- Shows last run time and recovery counts (tagged/updated/deleted)
+
 **Streak Calendar:**
 
 - View 6 weeks of writing activity in sidebar
@@ -239,7 +276,8 @@ windowrulev2 = workspace 5 silent, class:^(chromium)$
 
 **Sprint Timer:**
 
-- Click "Start" → Chromium opens on workspace 5
+- Click "Start" → Chromium opens on workspace 5 with a direct `youtube.com/watch` URL
+- Video playback should begin automatically on launch
 - Write with LoFi music and live word tracking
 - "Pause" fades audio out, "Resume" fades it back in
 - "Next" cycles through 5 LoFi videos
@@ -257,6 +295,7 @@ Keep the Rhythm solves this by properly saving and merging data across devices, 
 This fork adds:
 
 - **Tag-based filtering** - Only track specific tagged files
+- **Automatic offline recovery backfill** - Startup + periodic catch-up for missed edits
 - **Streak Calendar** - Visual 6-week goal tracking
 - **Sprint Timer** - Pomodoro with integrated LoFi music
 - **Omarchy Integration** - Hyprland workspace management

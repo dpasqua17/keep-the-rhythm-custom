@@ -32,8 +32,13 @@ export class SettingsTab extends PluginSettingTab {
 
 			section.settings.forEach((setting: SettingItem) => {
 				this.renderSetting(containerEl, setting);
-				// const currentValue = getByPath(this.settings, setting.key);
-				// updateVisibility(setting.key, currentValue);
+			});
+		});
+
+		SETTINGS_SCHEMA.sections.forEach((section: SettingsSection) => {
+			section.settings.forEach((setting: SettingItem) => {
+				const currentValue = getByPath(this.settings, setting.key);
+				updateVisibility(setting.key, currentValue);
 			});
 		});
 

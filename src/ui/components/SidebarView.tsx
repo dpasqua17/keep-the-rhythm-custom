@@ -1,6 +1,6 @@
 import { KeyProvider } from "@/utils/useModiferKey";
 import React, { useEffect, useState } from "react";
-import type { PluginData } from "@/defs/types";
+import type { BackfillStatus, PluginData } from "@/defs/types";
 import KeepTheRhythm from "@/main";
 import { Heatmap } from "./Heatmap";
 import { SlotWrapper } from "./SlotWrapper";
@@ -37,6 +37,9 @@ export const KTRView = ({ plugin }: KTRView) => {
 	const [sprintConfig, setSprintConfig] = useState(
 		plugin.data.settings.sprintConfig,
 	);
+	const [backfillStatus, setBackfillStatus] = useState<BackfillStatus | undefined>(
+		plugin.data.stats?.backfillStatus,
+	);
 
 	const updateData = () => {
 		setHeatmapConfigState(plugin.data.settings.heatmapConfig);
@@ -51,7 +54,12 @@ export const KTRView = ({ plugin }: KTRView) => {
 		);
 		setShowSlots(plugin.data.settings.sidebarConfig.visibility.showSlots);
 		setSprintConfig(plugin.data.settings.sprintConfig);
+		setBackfillStatus(plugin.data.stats?.backfillStatus);
 	};
+
+	const lastBackfillText = backfillStatus?.lastRunAt
+		? new Date(backfillStatus.lastRunAt).toLocaleString()
+		: "Never";
 
 	useEffect(() => {
 		updateData();
@@ -69,20 +77,34 @@ export const KTRView = ({ plugin }: KTRView) => {
 			sideBarView 
 			`}
 		>
-			<KeyProvider>
-				{showSlots && <SlotWrapper slots={slots} />}
-				{showHeatmap && (
-					<Heatmap heatmapConfig={heatmapConfigState} query={""} />
-				)}
-				<StreakCalendar
-					dailyGoal={plugin.data.settings.dailyWritingGoal || 500}
-				/>
-				{sprintConfig.enabled && (
-					<SprintTimer
-						workDuration={sprintConfig.workDuration}
-						breakDuration={sprintConfig.breakDuration}
+				<KeyProvider>
+					{showSlots && <SlotWrapper slots={slots} />}
+					{showHeatmap && (
+						<Heatmap heatmapConfig={heatmapConfigState} query={""} />
+					)}
+					<StreakCalendar
+						dailyGoal={plugin.data.settings.dailyWritingGoal || 500}
 					/>
-				)}
+					<div
+						className="ktr-backfill-status"
+						title="Offline/other-device sync recovery status"
+					>
+						<div className="ktr-backfill-status__title">Backfill</div>
+						<div className="ktr-backfill-status__line">
+							Last run: {lastBackfillText}
+						</div>
+						<div className="ktr-backfill-status__line">
+							Tagged: {backfillStatus?.taggedFiles || 0} | Updated:{" "}
+							{backfillStatus?.updatedActivities || 0} | Deleted:{" "}
+							{backfillStatus?.deletedFilesReconciled || 0}
+						</div>
+					</div>
+					{sprintConfig.enabled && (
+						<SprintTimer
+							workDuration={sprintConfig.workDuration}
+							breakDuration={sprintConfig.breakDuration}
+						/>
+					)}
 				{showEntries && <Entries />}
 			</KeyProvider>
 		</div>

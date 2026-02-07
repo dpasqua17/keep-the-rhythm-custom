@@ -1,3 +1,5 @@
 - Uses dexie.js for simplified querying language and indexes which improve performance;
 - Source of truth: data.json
     - Allows for cross device sync without overriding data (requires `onExternalSettingsChange`)
+- Includes automatic startup/periodic backfill for `#writing` files (default every 60 minutes) to recover offline edits and keep streaks accurate without manual refresh commands.
+- Sprint timer opens direct YouTube watch URLs in Chromium with autoplay policy enabled to avoid Omarchy webapp capture and extra click-to-play prompts.

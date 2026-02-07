@@ -33,8 +33,7 @@ export const SETTINGS_SCHEMA: SettingsSchema = {
 					key: "dailyWritingGoal",
 					type: "number",
 					title: "Writing Goal",
-					description:
-						"Amount of words you intend to write on a day.",
+					description: "Amount of words you intend to write on a day.",
 					placeholder: "500",
 				},
 				{
@@ -44,6 +43,22 @@ export const SETTINGS_SCHEMA: SettingsSchema = {
 					description:
 						"Only track statistics for markdown files containing this tag (e.g., 'writing'). Leave empty to track all files.",
 					placeholder: "writing",
+				},
+				{
+					key: "enablePeriodicBackfill",
+					type: "toggle",
+					title: "Enable Periodic Backfill",
+					description:
+						"Run offline/other-device recovery checks periodically while Obsidian is open.",
+				},
+				{
+					key: "backfillIntervalMinutes",
+					type: "number",
+					title: "Backfill Interval (minutes)",
+					description:
+						"How often offline/other-device writing backfill runs while Obsidian is open. Minimum 5 minutes.",
+					placeholder: "60",
+					visibleWhen: { enablePeriodicBackfill: true },
 				},
 			],
 		},

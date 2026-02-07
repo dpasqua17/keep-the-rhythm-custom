@@ -61,3 +61,23 @@
 	border-radius: 8px;
 	border: 1px solid var(--background-modifier-border);
 }
+
+.ktr-backfill-status {
+	margin-top: 10px;
+	margin-bottom: 6px;
+	padding: 8px;
+	border-radius: 8px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary-alt);
+}
+
+.ktr-backfill-status__title {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	margin-bottom: 4px;
+}
+
+.ktr-backfill-status__line {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}

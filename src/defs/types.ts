@@ -71,6 +71,8 @@ export interface Settings {
 	heatmapConfig: HeatmapConfig;
 	heatmapNavigation: boolean;
 	writingTagFilter: string; // only track files with this tag
+	enablePeriodicBackfill: boolean;
+	backfillIntervalMinutes: number; // periodic startup-style backfill interval while plugin is active
 
 	backupConfig: {
 		enabled: boolean;
@@ -101,6 +103,27 @@ export interface SlotConfig {
 	calc: CalculationType;
 }
 
+export interface FileTrackingSnapshot {
+	wordCount: number;
+	charCount: number;
+	lastModified: number;
+}
+
+export interface BackfillStatus {
+	lastRunAt: string;
+	source: "startup" | "hourly";
+	tagFilter: string;
+	intervalMinutes: number;
+	taggedFiles: number;
+	changedFiles: number;
+	updatedActivities: number;
+	deletedFilesReconciled: number;
+	fastSkippedFiles: number;
+	totalWordDelta: number;
+	totalCharDelta: number;
+	durationMs: number;
+}
+
 export interface PluginData {
 	settings: Settings;
 	migratedPreviousVersion?: boolean;
@@ -114,6 +137,8 @@ export interface PluginData {
 		dailyActivity: DailyActivity[];
 		wholeVaultWordCount?: number;
 		wholeVaultCharCount?: number;
+		fileSnapshots?: Record<string, FileTrackingSnapshot>;
+		backfillStatus?: BackfillStatus;
 	};
 }
 
@@ -150,6 +175,8 @@ export const DEFAULT_SETTINGS: Settings = {
 	startOfTheWeek: "SUNDAY",
 	heatmapNavigation: true,
 	writingTagFilter: "writing",
+	enablePeriodicBackfill: true,
+	backfillIntervalMinutes: 60,
 	heatmapConfig: {
 		roundCells: true,
 		hideMonthLabels: false,
