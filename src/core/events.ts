@@ -73,23 +73,23 @@ export async function handleEditorChange(
 	);
 	const newCharCount = currentContent.length;
 
-	/**
-	 * Calculates delta word count based on
-	 * @var wordCountStart: amount of words the file started at the first time it was opened
-	 * @var prevWordsAdded: amount of words written today (added across changes[])
-	 * @var newWordCount: current amount of words in the file
-	 */
-	const { totalWords, totalChars } = sumBothTimeEntries(activity);
+	/** Delta is from wordCountStart only - current file content vs when file was opened */
+	const wordsAdded = newWordCount - activity.wordCountStart;
+	const charsAdded = newCharCount - activity.charCountStart;
 
-	const wordsAdded = newWordCount - totalWords;
-	const charsAdded = newCharCount - totalChars;
+	/** Only track positive changes (writing), not deletions */
+	const actualWordsWritten = Math.max(0, wordsAdded);
+	const actualCharsWritten = Math.max(0, charsAdded);
 
-	if (state.plugin.data.stats && (wordsAdded !== 0 || charsAdded !== 0)) {
+	if (
+		state.plugin.data.stats &&
+		(actualWordsWritten !== 0 || actualCharsWritten !== 0)
+	) {
 		if (state.plugin.data.stats.wholeVaultWordCount !== undefined) {
-			state.plugin.data.stats.wholeVaultWordCount += wordsAdded;
+			state.plugin.data.stats.wholeVaultWordCount += actualWordsWritten;
 		}
 		if (state.plugin.data.stats.wholeVaultCharCount !== undefined) {
-			state.plugin.data.stats.wholeVaultCharCount += charsAdded;
+			state.plugin.data.stats.wholeVaultCharCount += actualCharsWritten;
 		}
 	}
 
@@ -114,17 +114,20 @@ export async function handleEditorChange(
 		// No entry yet for this timeKey, so push a new one
 		changes.push({
 			timeKey: currentTimeKey,
-			w: wordsAdded || 0,
-			c: charsAdded || 0,
+			w: actualWordsWritten || 0,
+			c: actualCharsWritten || 0,
 		});
 	} else {
-		// Entry exists, so update the word and char count
-		existingEntry.w += wordsAdded;
-		existingEntry.c += charsAdded;
+		// Entry exists, update with current total (not cumulative)
+		existingEntry.w = actualWordsWritten;
+		existingEntry.c = actualCharsWritten;
 	}
 
 	// WORKING ON UPDATING JUST TODAY!!!
 	state.emit(EVENTS.REFRESH_EVERYTHING);
+
+	let dbSaveTimeout: NodeJS.Timeout | null = null;
+	const DB_SAVE_DEBOUNCE = 5000; // 5 seconds
 
 	/** Debounces updates to the DB, which only happens when
 	 *  the user stops editing the page for 200ms. */
@@ -132,6 +135,12 @@ export async function handleEditorChange(
 
 	dbUpdateTimeout = setTimeout(async () => {
 		await flushChangesToDB(state.currentActivity!);
+
+		// Debounced save to data.json
+		if (dbSaveTimeout) clearTimeout(dbSaveTimeout);
+		dbSaveTimeout = setTimeout(() => {
+			state.plugin.saveDataToJSON();
+		}, DB_SAVE_DEBOUNCE);
 	}, DEBOUNCE_TIME);
 }
 
@@ -225,13 +234,9 @@ async function flushChangesToDB(activity: DailyActivity) {
 				mergedMap[entry.timeKey] = { ...entry };
 			}
 
+			// Use latest values from currentChanges (they're totals, not deltas)
 			for (const entry of currentChanges) {
-				if (mergedMap[entry.timeKey]) {
-					mergedMap[entry.timeKey].w = entry.w;
-					mergedMap[entry.timeKey].c = entry.c;
-				} else {
-					mergedMap[entry.timeKey] = { ...entry };
-				}
+				mergedMap[entry.timeKey] = { ...entry };
 			}
 
 			// Convert map back to array and sort by timeKey
@@ -239,6 +244,9 @@ async function flushChangesToDB(activity: DailyActivity) {
 				a.timeKey.localeCompare(b.timeKey),
 			);
 		});
+
+	// Clear in-memory changes after flushing to avoid double-counting
+	activity.changes = [];
 
 	checkStreak();
 	state.emit(EVENTS.REFRESH_EVERYTHING);

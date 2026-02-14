@@ -1,9 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-	SprintManager,
-	SprintStatus,
-	SPRINT_VIDEOS,
-} from "@/core/SprintManager";
+import { SprintManager, SprintStatus } from "@/core/SprintManager";
 
 interface SprintTimerProps {
 	workDuration: number;
@@ -20,7 +16,6 @@ export const SprintTimer: React.FC<SprintTimerProps> = ({
 	const [status, setStatus] = useState<SprintStatus>("idle");
 	const [timeRemaining, setTimeRemaining] = useState(workDuration * 60);
 	const [wordsWritten, setWordsWritten] = useState(0);
-	const [currentVideo, setCurrentVideo] = useState(0);
 
 	useEffect(() => {
 		manager.setDurations(workDuration, breakDuration);
@@ -29,7 +24,6 @@ export const SprintTimer: React.FC<SprintTimerProps> = ({
 	const updateState = useCallback(() => {
 		setStatus(manager.getStatus());
 		setTimeRemaining(manager.getTimeRemaining());
-		setCurrentVideo(manager.getCurrentVideoIndex());
 		const stats = manager.getStats();
 		if (stats) {
 			setWordsWritten(stats.wordsWritten);
@@ -61,11 +55,6 @@ export const SprintTimer: React.FC<SprintTimerProps> = ({
 		await manager.endSprint();
 		updateState();
 		setWordsWritten(0);
-	};
-
-	const handleNextVideo = async () => {
-		await manager.nextVideo();
-		updateState();
 	};
 
 	const getStatusText = (): string => {
@@ -106,11 +95,6 @@ export const SprintTimer: React.FC<SprintTimerProps> = ({
 						? `${wordsWritten} words`
 						: "Start writing..."}
 				</span>
-				{status !== "idle" && (
-					<span className="sprint-video">
-						Video {currentVideo + 1}/{SPRINT_VIDEOS.length}
-					</span>
-				)}
 			</div>
 
 			<div className="sprint-controls">
@@ -147,15 +131,6 @@ export const SprintTimer: React.FC<SprintTimerProps> = ({
 					disabled={status === "idle"}
 				>
 					⏹️ Stop
-				</button>
-
-				<button
-					className="sprint-btn sprint-btn-tertiary"
-					onClick={handleNextVideo}
-					title="Next video"
-					disabled={status === "idle"}
-				>
-					🎵 Next
 				</button>
 			</div>
 

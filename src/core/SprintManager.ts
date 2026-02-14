@@ -1,8 +1,4 @@
 import { state } from "./pluginState";
-import { exec, ChildProcess } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
 
 export type SprintStatus = "idle" | "working" | "break" | "paused";
 
@@ -12,29 +8,18 @@ interface SprintStats {
 	startTime: Date;
 }
 
-export const SPRINT_VIDEOS = [
-	"V-FO9ST7KUI",
-	"jfKfPfyJRdk",
-	"n61ULEU7Kb0",
-	"MYPVQccHh8g",
-	"lP26UCnoH9s",
-];
-
 export class SprintManager {
 	private status: SprintStatus = "idle";
-	private workDuration: number = 25; // minutes
-	private breakDuration: number = 5; // minutes
-	private timeRemaining: number = 0; // seconds
+	private workDuration: number = 25;
+	private breakDuration: number = 5;
+	private timeRemaining: number = 0;
 	private timerInterval: NodeJS.Timeout | null = null;
-	private currentVideoIndex: number = 0;
-	private browserProcess: ChildProcess | null = null;
 	private stats: SprintStats | null = null;
 	private onUpdate: (
 		status: SprintStatus,
 		timeRemaining: number,
 		stats: SprintStats | null,
 	) => void;
-	private fadeDuration: number = 2; // seconds
 
 	constructor(
 		onUpdate: (
@@ -67,8 +52,6 @@ export class SprintManager {
 			startTime: new Date(),
 		};
 
-		await this.spawnBrowser();
-		await this.fadeAudio("in");
 		this.startTimer();
 		this.notifyUpdate();
 	}
@@ -78,7 +61,6 @@ export class SprintManager {
 
 		this.status = "paused";
 		this.stopTimer();
-		this.fadeAudio("out");
 		this.notifyUpdate();
 	}
 
@@ -86,26 +68,15 @@ export class SprintManager {
 		this.status =
 			this.timeRemaining > this.breakDuration * 60 ? "working" : "break";
 		this.startTimer();
-		this.fadeAudio("in");
 		this.notifyUpdate();
 	}
 
 	async endSprint(): Promise<void> {
 		this.stopTimer();
-		await this.fadeAudio("out");
 		this.status = "idle";
 		this.timeRemaining = this.workDuration * 60;
 		this.stats = null;
 		this.notifyUpdate();
-	}
-
-	async nextVideo(): Promise<void> {
-		this.currentVideoIndex =
-			(this.currentVideoIndex + 1) % SPRINT_VIDEOS.length;
-		if (this.browserProcess) {
-			await this.killBrowser();
-			await this.spawnBrowser();
-		}
 	}
 
 	async cycleToBreak(): Promise<void> {
@@ -114,7 +85,6 @@ export class SprintManager {
 		this.stopTimer();
 		this.status = "break";
 		this.timeRemaining = this.breakDuration * 60;
-		await this.fadeAudio("in");
 		this.startTimer();
 		this.notifyUpdate();
 	}
@@ -168,75 +138,6 @@ export class SprintManager {
 		return total;
 	}
 
-	private async spawnBrowser(): Promise<void> {
-		const videoId = SPRINT_VIDEOS[this.currentVideoIndex];
-		const url = `https://www.youtube.com/watch?v=${videoId}&autoplay=1&loop=1&playlist=${videoId}`;
-
-		try {
-			this.browserProcess = exec(
-				`chromium --new-window --disable-features=DesktopPWAsLinkCapturing --autoplay-policy=no-user-gesture-required "${url}"`,
-				(error) => {
-					if (error && !error.message.includes("SIGTERM")) {
-						console.error("Failed to spawn Chromium:", error);
-					}
-				},
-			);
-		} catch (error) {
-			console.error("Error spawning browser:", error);
-		}
-	}
-
-	async killBrowser(): Promise<void> {
-		if (this.browserProcess) {
-			this.browserProcess.kill();
-			this.browserProcess = null;
-		}
-
-		try {
-			await execAsync("pkill -f 'chromium.*youtube\\.com/(watch|embed)'");
-		} catch (error) {
-			// Process might not exist, that's fine
-		}
-	}
-
-	private async fadeAudio(direction: "in" | "out"): Promise<void> {
-		const steps = 10;
-		const stepDuration = (this.fadeDuration * 1000) / steps;
-		const targetVolume = direction === "in" ? 100 : 0;
-		const startVolume = direction === "in" ? 0 : 100;
-
-		for (let i = 0; i <= steps; i++) {
-			const volume =
-				startVolume + ((targetVolume - startVolume) * i) / steps;
-			await this.setChromiumVolume(volume);
-			await new Promise((resolve) => setTimeout(resolve, stepDuration));
-		}
-	}
-
-	private async setChromiumVolume(volumePercent: number): Promise<void> {
-		try {
-			const { stdout } = await execAsync("pactl list sink-inputs");
-			const chromiumSink = stdout
-				.split("Sink Input #")
-				.find(
-					(sink) =>
-						sink.includes("chromium") || sink.includes("Chromium"),
-				);
-
-			if (chromiumSink) {
-				const sinkId = chromiumSink.match(/(\d+)/)?.[0];
-				if (sinkId) {
-					const volume = Math.round((volumePercent / 100) * 65536);
-					await execAsync(
-						`pactl set-sink-input-volume ${sinkId} ${volume}`,
-					);
-				}
-			}
-		} catch (error) {
-			// Silently fail if pactl not available
-		}
-	}
-
 	private notifyUpdate(): void {
 		this.onUpdate(this.status, this.timeRemaining, this.stats);
 	}
@@ -249,10 +150,6 @@ export class SprintManager {
 		return this.timeRemaining;
 	}
 
-	getCurrentVideoIndex(): number {
-		return this.currentVideoIndex;
-	}
-
 	getStats(): SprintStats | null {
 		return this.stats;
 	}
@@ -262,14 +159,6 @@ export class SprintManager {
 		this.breakDuration = break_;
 		if (this.status === "idle") {
 			this.timeRemaining = work * 60;
-		}
-	}
-
-	static async killAllBrowsers(): Promise<void> {
-		try {
-			await execAsync("pkill -f 'chromium.*youtube\\.com/(watch|embed)'");
-		} catch (error) {
-			// Process might not exist, that's fine
 		}
 	}
 }

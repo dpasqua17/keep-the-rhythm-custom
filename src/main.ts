@@ -259,7 +259,10 @@ export default class KeepTheRhythm extends Plugin {
 		return (newActivity.id || 0) > (currentActivity.id || 0);
 	}
 
-	private resolveBackfillDate(mtimeDate: string, baselineDate: string): string {
+	private resolveBackfillDate(
+		mtimeDate: string,
+		baselineDate: string,
+	): string {
 		return resolveBackfillDate(mtimeDate, baselineDate);
 	}
 
@@ -309,7 +312,9 @@ export default class KeepTheRhythm extends Plugin {
 			});
 		}
 
-		existingActivity.changes.sort((a, b) => a.timeKey.localeCompare(b.timeKey));
+		existingActivity.changes.sort((a, b) =>
+			a.timeKey.localeCompare(b.timeKey),
+		);
 		await getDB().dailyActivity.put(existingActivity);
 	}
 
@@ -379,11 +384,15 @@ export default class KeepTheRhythm extends Plugin {
 			const snapshot = fileSnapshots[file.path];
 			const safeMtime = Math.min(file.stat.mtime || now, now);
 			const mtimeDate = formatDate(new Date(safeMtime));
-			const timeKey = floorMomentToFive(moment(safeMtime)).format("HH:mm");
+			const timeKey = floorMomentToFive(moment(safeMtime)).format(
+				"HH:mm",
+			);
 			const latestActivity = latestActivityByPath.get(file.path) || null;
 
 			const canSkipReadWithSnapshot =
-				!!snapshot && !tagFilterChanged && safeMtime <= snapshot.lastModified;
+				!!snapshot &&
+				!tagFilterChanged &&
+				safeMtime <= snapshot.lastModified;
 			if (canSkipReadWithSnapshot) {
 				taggedPaths.add(file.path);
 				taggedFiles++;
@@ -432,6 +441,17 @@ export default class KeepTheRhythm extends Plugin {
 				snapshot,
 				safeMtime,
 			);
+
+			// Skip backfill for files already tracked today - live editing captures changes
+			if (latestActivity && latestActivity.date === state.today) {
+				fileSnapshots[file.path] = {
+					wordCount: currentWordCount,
+					charCount: currentCharCount,
+					lastModified: safeMtime,
+				};
+				continue;
+			}
+
 			if (baseline) {
 				const baselineWordCount = baseline.wordCount;
 				const baselineCharCount = baseline.charCount;
@@ -539,8 +559,12 @@ export default class KeepTheRhythm extends Plugin {
 		}));
 
 		const dailyGoal =
-			this.data.settings.dailyWritingGoal || DEFAULT_SETTINGS.dailyWritingGoal;
-		const completedDates = computeCompletedDatesFromDeltas(wordDeltas, dailyGoal);
+			this.data.settings.dailyWritingGoal ||
+			DEFAULT_SETTINGS.dailyWritingGoal;
+		const completedDates = computeCompletedDatesFromDeltas(
+			wordDeltas,
+			dailyGoal,
+		);
 
 		this.data.stats.daysWithCompletedGoal = completedDates;
 
@@ -551,7 +575,9 @@ export default class KeepTheRhythm extends Plugin {
 
 		const datesChanged =
 			previousCompletedDates.length !== completedDates.length ||
-			previousCompletedDates.some((date, index) => date !== completedDates[index]);
+			previousCompletedDates.some(
+				(date, index) => date !== completedDates[index],
+			);
 		const streakChanged =
 			previousCurrentStreak !== currentStreak ||
 			previousHighestStreak !== longestStreak;
@@ -823,9 +849,6 @@ export default class KeepTheRhythm extends Plugin {
 		this.backupDataToVaultFolder(this.data);
 
 		await getDB().dailyActivity.clear();
-
-		// Kill sprint browser when Obsidian closes
-		await SprintManager.killAllBrowsers();
 	}
 
 	// #endregion
@@ -876,7 +899,7 @@ export default class KeepTheRhythm extends Plugin {
 
 	// #region SAVING DATA
 
-	private async saveDataToJSON() {
+	public async saveDataToJSON() {
 		const dailyActivityDB = await getDB().dailyActivity.toArray();
 
 		this.data.stats = {
