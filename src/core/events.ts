@@ -7,10 +7,11 @@ import { getDB } from "../db/db";
 import { DailyActivity, TimeEntry } from "@/db/types";
 import KeepTheRhythm from "../main";
 import { getLanguageBasedWordCount } from "@/core/wordCounting";
-import { floorMomentToFive } from "@/utils/dateUtils";
+import { floorMomentToFive, formatDate } from "@/utils/dateUtils";
 import { moment as _moment } from "obsidian";
-import { sumBothTimeEntries } from "@/utils/utils";
+import { sumTimeEntries } from "@/utils/utils";
 import { fileHasTag } from "@/core/tagFilter";
+import { getBucketDeltas } from "@/core/activityTracking";
 
 const moment = _moment as unknown as typeof _moment.default;
 
@@ -78,18 +79,26 @@ export async function handleEditorChange(
 	const charsAdded = newCharCount - activity.charCountStart;
 
 	/** Only track positive changes (writing), not deletions */
-	const actualWordsWritten = Math.max(0, wordsAdded);
-	const actualCharsWritten = Math.max(0, charsAdded);
+	const totalWordsWritten = Math.max(0, wordsAdded);
+	const totalCharsWritten = Math.max(0, charsAdded);
 
 	if (
 		state.plugin.data.stats &&
-		(actualWordsWritten !== 0 || actualCharsWritten !== 0)
+		(totalWordsWritten !== 0 || totalCharsWritten !== 0)
 	) {
+		const currentTimeKey = floorMomentToFive(moment()).format("HH:mm");
+		const { wordDelta, charDelta } = getBucketDeltas(
+			activity.changes,
+			currentTimeKey,
+			totalWordsWritten,
+			totalCharsWritten,
+		);
+
 		if (state.plugin.data.stats.wholeVaultWordCount !== undefined) {
-			state.plugin.data.stats.wholeVaultWordCount += actualWordsWritten;
+			state.plugin.data.stats.wholeVaultWordCount += wordDelta;
 		}
 		if (state.plugin.data.stats.wholeVaultCharCount !== undefined) {
-			state.plugin.data.stats.wholeVaultCharCount += actualCharsWritten;
+			state.plugin.data.stats.wholeVaultCharCount += charDelta;
 		}
 	}
 
@@ -109,18 +118,24 @@ export async function handleEditorChange(
 	const existingEntry = changes.find(
 		(entry) => entry.timeKey === currentTimeKey,
 	);
+	const { wordDelta, charDelta } = getBucketDeltas(
+		changes,
+		currentTimeKey,
+		totalWordsWritten,
+		totalCharsWritten,
+	);
 
 	if (!existingEntry) {
 		// No entry yet for this timeKey, so push a new one
 		changes.push({
 			timeKey: currentTimeKey,
-			w: actualWordsWritten || 0,
-			c: actualCharsWritten || 0,
+			w: wordDelta,
+			c: charDelta,
 		});
 	} else {
-		// Entry exists, update with current total (not cumulative)
-		existingEntry.w = actualWordsWritten;
-		existingEntry.c = actualCharsWritten;
+		// Entry exists, update with the latest delta for this time bucket.
+		existingEntry.w = wordDelta;
+		existingEntry.c = charDelta;
 	}
 
 	// WORKING ON UPDATING JUST TODAY!!!
@@ -172,6 +187,7 @@ export async function handleFileOpen(file: TFile) {
 
 	/** Return if the file "opened" is the same that was seen last time. */
 	if (file.path == state.currentActivity?.filePath) {
+		state.isUpdatingActivity = false;
 		return;
 	}
 
@@ -199,10 +215,72 @@ export async function handleFileOpen(file: TFile) {
 		await getDB().dailyActivity.add(entry);
 	}
 
+	if (entry) {
+		entry = await repairInflatedNewFileActivity(file, entry);
+	}
+
 	if (entry) state.setCurrentActivity(entry);
 	state.isUpdatingActivity = false;
 
 	state.emit(EVENTS.REFRESH_EVERYTHING);
+}
+
+async function repairInflatedNewFileActivity(
+	file: TFile,
+	entry: DailyActivity,
+): Promise<DailyActivity> {
+	const createdToday =
+		formatDate(new Date(file.stat.ctime || file.stat.mtime)) === state.today;
+
+	if (!createdToday) {
+		return entry;
+	}
+
+	const fileActivities = await getDB()
+		.dailyActivity.where("filePath")
+		.equals(file.path)
+		.toArray();
+	const hasOlderActivity = fileActivities.some(
+		(activity) => activity.date < state.today,
+	);
+
+	if (hasOlderActivity) {
+		return entry;
+	}
+
+	const content = await state.plugin.app.vault.read(file);
+	const currentWordCount = getLanguageBasedWordCount(
+		content,
+		state.plugin.data.settings.enabledLanguages,
+	);
+	const trackedWordsToday = sumTimeEntries(entry, Unit.WORD, true);
+	const trackedCharsToday = sumTimeEntries(entry, Unit.CHAR, true);
+
+	if (
+		trackedWordsToday <= currentWordCount &&
+		trackedCharsToday <= content.length
+	) {
+		return entry;
+	}
+
+	const repairedEntry: DailyActivity = {
+		...entry,
+		wordCountStart: 0,
+		charCountStart: 0,
+		changes:
+			currentWordCount > 0 || content.length > 0
+				? [
+						{
+							timeKey: floorMomentToFive(moment()).format("HH:mm"),
+							w: currentWordCount,
+							c: content.length,
+						},
+				  ]
+				: [],
+	};
+
+	await getDB().dailyActivity.put(repairedEntry);
+	return repairedEntry;
 }
 
 /**
@@ -234,7 +312,7 @@ async function flushChangesToDB(activity: DailyActivity) {
 				mergedMap[entry.timeKey] = { ...entry };
 			}
 
-			// Use latest values from currentChanges (they're totals, not deltas)
+			// Use latest values from currentChanges for each time bucket.
 			for (const entry of currentChanges) {
 				mergedMap[entry.timeKey] = { ...entry };
 			}
@@ -244,9 +322,6 @@ async function flushChangesToDB(activity: DailyActivity) {
 				a.timeKey.localeCompare(b.timeKey),
 			);
 		});
-
-	// Clear in-memory changes after flushing to avoid double-counting
-	activity.changes = [];
 
 	checkStreak();
 	state.emit(EVENTS.REFRESH_EVERYTHING);

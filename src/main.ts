@@ -44,6 +44,7 @@ import {
 	LatestTrackedCounts,
 	resolveBackfillDate,
 } from "@/core/backfillLogic";
+import { repairLegacyCumulativeActivities } from "@/core/activityRepair";
 
 const moment = _moment as unknown as typeof _moment.default;
 
@@ -738,7 +739,13 @@ export default class KeepTheRhythm extends Plugin {
 			};
 		}
 		if (loadedData.stats) {
-			this.data.stats = loadedData.stats;
+			const { activities, repairedCount } = repairLegacyCumulativeActivities(
+				loadedData.stats.dailyActivity || [],
+			);
+			this.data.stats = {
+				...loadedData.stats,
+				dailyActivity: activities,
+			};
 
 			const dailyActivitiesFromJSON =
 				this.data.stats?.dailyActivity || [];
@@ -751,6 +758,10 @@ export default class KeepTheRhythm extends Plugin {
 					"Failed loading some data, contact the developer.",
 					error,
 				);
+			}
+
+			if (repairedCount > 0) {
+				await this.saveData(this.data);
 			}
 		}
 	}
